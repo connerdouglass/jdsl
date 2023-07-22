@@ -13,11 +13,19 @@ import (
 )
 
 type Options struct {
-	GitRoot    string
-	Inputs     []string
-	OutputRoot string
-	Strict     bool
-	Annotate   bool
+	GitRoot        string
+	Inputs         []string
+	CombinedOutput string
+	OutputRoot     string
+	Strict         bool
+	Annotate       bool
+	Verbose        bool
+}
+
+func (o *Options) Log(str string) {
+	if o.Verbose {
+		fmt.Println(str)
+	}
 }
 
 type Transpiler interface {
@@ -37,9 +45,25 @@ func (t *transpiler) Transpile(ctx context.Context, opts Options) error {
 		return fmt.Errorf("opening repo: %s", err)
 	}
 
-	// Create the output directory
-	if err := os.MkdirAll(opts.OutputRoot, 0755); err != nil {
-		return fmt.Errorf("creating output directory: %s", err)
+	// If we're in single output mode, create that output
+	var combinedOutput io.WriteCloser
+	if len(opts.CombinedOutput) > 0 {
+		// Create the parent directory for the combined output file
+		if err := os.MkdirAll(filepath.Dir(opts.CombinedOutput), 0755); err != nil {
+			return fmt.Errorf("creating output directory: %s", err)
+		}
+
+		// Create the single file we're write all output to
+		combinedOutput, err = os.Create(opts.CombinedOutput)
+		if err != nil {
+			return fmt.Errorf("creating combined output file: %s", err)
+		}
+		defer combinedOutput.Close()
+	} else {
+		// Create the output directory
+		if err := os.MkdirAll(opts.OutputRoot, 0755); err != nil {
+			return fmt.Errorf("creating output directory: %s", err)
+		}
 	}
 
 	// Process input files
@@ -52,7 +76,7 @@ func (t *transpiler) Transpile(ctx context.Context, opts Options) error {
 		}
 
 		// Process the input file
-		err := t.processInput(ctx, repo, &opts, input)
+		err := t.processInput(ctx, repo, &opts, input, combinedOutput)
 		if err != nil {
 			return fmt.Errorf("processing input: %s", err)
 		}
@@ -60,7 +84,7 @@ func (t *transpiler) Transpile(ctx context.Context, opts Options) error {
 	return nil
 }
 
-func (t *transpiler) processInput(ctx context.Context, repo *git.Repository, opts *Options, input string) error {
+func (t *transpiler) processInput(ctx context.Context, repo *git.Repository, opts *Options, input string, combinedOutput io.Writer) error {
 	// Trim the extension from the input filename
 	input = strings.TrimSuffix(input, filepath.Ext(input))
 	manifestPath := input + ".json"
@@ -77,17 +101,36 @@ func (t *transpiler) processInput(ctx context.Context, repo *git.Repository, opt
 		return fmt.Errorf("file name in manifest (%s) does not match: %s", manifest.File, filepath.Base(manifestPath))
 	}
 
-	// Create the output file
-	outputPath := filepath.Join(opts.OutputRoot, jsPath)
-	if err := os.MkdirAll(filepath.Dir(outputPath), 0755); err != nil {
-		return fmt.Errorf("creating output directory: %s", err)
+	// Determine if we're writing to a single combined output or not
+	var output io.Writer
+	if combinedOutput != nil {
+		output = combinedOutput
+	} else {
+		// Create the output file
+		outputPath := filepath.Join(opts.OutputRoot, jsPath)
+		if err := os.MkdirAll(filepath.Dir(outputPath), 0755); err != nil {
+			return fmt.Errorf("creating output directory: %s", err)
+		}
+		outputFile, err := os.Create(outputPath)
+		if err != nil {
+			return fmt.Errorf("creating output file: %s", err)
+		}
+		defer outputFile.Close()
+		output = outputFile
 	}
-	output, err := os.Create(outputPath)
-	if err != nil {
-		return fmt.Errorf("creating output file: %s", err)
-	}
-	defer output.Close()
 
+	// Transpile and write to the output
+	return t.transpileFile(ctx, repo, opts, &manifest, jsPath, output)
+}
+
+func (t *transpiler) transpileFile(
+	ctx context.Context,
+	repo *git.Repository,
+	opts *Options,
+	manifest *Manifest,
+	jsPath string,
+	output io.Writer,
+) error {
 	// Start with the standard JDSL class definition.
 	// ES3 of course.
 	if opts.Annotate {
@@ -99,17 +142,18 @@ func (t *transpiler) processInput(ctx context.Context, repo *git.Repository, opt
 			"// Purpose: " + manifest.Purpose,
 			"",
 		}
-		if _, err := output.WriteString(strings.Join(headerAnnotations, "\n")); err != nil {
+
+		if _, err := output.Write([]byte(strings.Join(headerAnnotations, "\n"))); err != nil {
 			return fmt.Errorf("writing annotation: %s", err)
 		}
 	}
-	if _, err := output.WriteString(fmt.Sprintf("function %s() {}\n", manifest.Class)); err != nil {
+	if _, err := output.Write([]byte(fmt.Sprintf("function %s() {}\n", manifest.Class))); err != nil {
 		return fmt.Errorf("writing class definition: %s", err)
 	}
 
 	// Read the JS file from the specified commit history for each function
 	for _, function := range manifest.Functions {
-		fmt.Printf("Reading %s from commit %s...\n", jsPath, function)
+		opts.Log(fmt.Sprintf("Reading %s from commit %s...", jsPath, function))
 
 		commit, err := repo.CommitObject(plumbing.NewHash(function))
 		if err != nil {
