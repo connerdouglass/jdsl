@@ -1,4 +1,4 @@
-package jdsl
+package transpiler
 
 import (
 	"encoding/json"

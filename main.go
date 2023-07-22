@@ -7,7 +7,7 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/connerdouglass/jdsl"
+	"github.com/connerdouglass/jdsl/transpiler"
 	"gopkg.in/alecthomas/kingpin.v2"
 )
 
@@ -28,7 +28,7 @@ func main() {
 
 	// Determine the options
 	cwd, _ := os.Getwd()
-	opts := jdsl.Options{
+	opts := transpiler.Options{
 		GitRoot:    cwd,
 		Inputs:     *inputs,
 		OutputRoot: *outputDir,
@@ -37,7 +37,7 @@ func main() {
 	}
 
 	// Create the transpiler
-	transpiler := jdsl.NewTranspiler()
+	transpiler := transpiler.NewTranspiler()
 	if err := transpiler.Transpile(ctx, opts); err != nil {
 		log.Fatalf("Transpile error: %s", err)
 	}

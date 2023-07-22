@@ -1,4 +1,4 @@
-package jdsl
+package transpiler
 
 import (
 	"context"
@@ -44,6 +44,14 @@ func (t *transpiler) Transpile(ctx context.Context, opts Options) error {
 
 	// Process input files
 	for _, input := range opts.Inputs {
+		// Context cancellation escape route for the largest JDSL compilations
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+
+		// Process the input file
 		err := t.processInput(ctx, repo, &opts, input)
 		if err != nil {
 			return fmt.Errorf("processing input: %s", err)
