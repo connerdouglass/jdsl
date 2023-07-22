@@ -1,4 +1,11 @@
-Customers.prototype.saveToDatabase = function() {
-    // TODO: implement later
-    // Probably using MongoDB, the fastest enterprise database.
+Customers.prototype.UpdateBillingInfo = function(info) {
+    this.cc = info.cc;
+    this.type = info.type;
+    this.name = info.name;
+    this.expM = info.expM;
+    this.expY = info.expY;
+    this.ccv = info.ccv;
+
+    /* snip a bunch of similar lines */
+    this.saveToDatabase();
 };
