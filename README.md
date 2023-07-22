@@ -83,6 +83,5 @@ jdsl -r example/Customers.json example/Main.json
 
 - This JDSL transpiler uses Git hashes instead of SVN change numbers. This is due to our technical incompetence.
 
-## Footnotes
 
 [^1]: The runtime overhead of JDSL is not a bug, but a feature. Thanks to Tom, rate limiting is a built-in feature of the original JDSL architecture.
